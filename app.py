@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -30,10 +29,10 @@ def load_data(path: str) -> pd.DataFrame:
     df = df.sort_values("timestamp").reset_index(drop=True)
     # Numeric columns (zones)
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    # Try to keep 'load' and other zone columns
     return df, numeric_cols
 
-df, numeric_cols = load_data("data/PJM-ZONE-WISE-LOAD-DATA.xlsx")
+# USE ROOT-LEVEL PATH:
+df, numeric_cols = load_data("PJM-ZONE-WISE-LOAD-DATA.xlsx")
 
 # -------------- Header --------------
 st.markdown("### ⚡ PJM Zone-wise Load — Dark Insight Dashboard")
@@ -45,7 +44,6 @@ st.markdown(
 with st.sidebar:
     st.header("Controls")
     st.caption("Tip: Select a smaller time window for faster charts.")
-    # Time range
     min_t, max_t = df["timestamp"].min(), df["timestamp"].max()
     default_start = max_t - pd.Timedelta(days=3)
     start, end = st.slider(
@@ -55,15 +53,12 @@ with st.sidebar:
         value=(default_start.to_pydatetime(), max_t.to_pydatetime()),
         format="YYYY-MM-DD HH:mm",
     )
-    # Zone selection
-    # Keep only a subset by default: the 'pjm_rto' (total) plus a few regions if present
     default_zones = [c for c in ["pjm_rto", "pjm_eastern_region", "pjm_western_region", "pjm_southern_region", "dom"] if c in numeric_cols]
     selected_zones = st.multiselect(
         "Pick zones to visualize",
         options=numeric_cols,
         default=default_zones if default_zones else numeric_cols[:5],
     )
-    # Resample
     resample_rule = st.selectbox(
         "Resample (average)",
         options=["5T", "15T", "30T", "1H", "6H", "1D"],
@@ -71,11 +66,8 @@ with st.sidebar:
         help="Group data into bigger time buckets to smooth the lines."
     )
 
-# Filter time
 mask = (df["timestamp"] >= pd.Timestamp(start)) & (df["timestamp"] <= pd.Timestamp(end))
 view = df.loc[mask].copy()
-
-# Resample
 view = view.set_index("timestamp").resample(resample_rule).mean(numeric_only=True).reset_index()
 
 # -------------- KPI Cards --------------
@@ -91,7 +83,6 @@ def kpi_card(col, label, value, suffix=""):
         unsafe_allow_html=True
     )
 
-# Compute KPIs for 'pjm_rto' if present, else use overall mean of selected zones
 def series_for_kpis(df_view: pd.DataFrame) -> pd.Series:
     target = None
     if "pjm_rto" in df_view.columns:
@@ -107,7 +98,6 @@ if not target.empty:
     kpi_card(kpi_cols[0], "Peak Load", f"{target.max():,.0f}", " MW")
     kpi_card(kpi_cols[1], "Lowest Load", f"{target.min():,.0f}", " MW")
     kpi_card(kpi_cols[2], "Average Load", f"{target.mean():,.0f}", " MW")
-    # Simple percent change from first to last
     pct = np.nan
     if len(target) >= 2 and target.iloc[0] != 0:
         pct = ((target.iloc[-1] - target.iloc[0]) / abs(target.iloc[0])) * 100
@@ -117,8 +107,6 @@ st.markdown("---")
 
 # -------------- Main Charts --------------
 left, right = st.columns([2, 1])
-
-# Line chart for selected zones
 with left:
     st.subheader("Trend Over Time")
     if selected_zones:
@@ -140,7 +128,6 @@ with left:
     else:
         st.info("Pick at least one zone in the sidebar.")
 
-# Top/Bottom zones (by average within window)
 with right:
     st.subheader("Top & Bottom Zones (Avg)")
     zone_means = view[numeric_cols].mean(numeric_only=True).sort_values(ascending=False)
@@ -160,7 +147,6 @@ st.markdown("---")
 
 # -------------- Daily patterns --------------
 col1, col2 = st.columns(2)
-
 with col1:
     st.subheader("Daily Average (Which day is highest?)")
     day = view.set_index("timestamp").resample("1D").mean(numeric_only=True).reset_index()
@@ -174,7 +160,6 @@ with col1:
 
 with col2:
     st.subheader("Hourly Pattern (Typical day shape)")
-    # Compute average by clock hour
     tmp = view.copy()
     tmp["hour"] = pd.to_datetime(tmp["timestamp"]).dt.hour
     if "pjm_rto" in tmp.columns:
@@ -186,7 +171,6 @@ with col2:
     fig_hour.update_layout(template="plotly_dark", height=350, margin=dict(l=10, r=10, t=40, b=10))
     st.plotly_chart(fig_hour, use_container_width=True)
 
-# -------------- Simple explanations (student-friendly) --------------
 with st.expander("Open: What am I looking at? (for students)", expanded=False):
     st.markdown(
         """
